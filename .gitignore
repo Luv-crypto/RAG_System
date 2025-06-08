@@ -1,0 +1,12 @@
+# Python venv
+rag/
+
+# Bytecode
+__pycache__/
+*.py[cod]
+
+# Environment vars
+.env
+
+# Editor folders
+.vscode/

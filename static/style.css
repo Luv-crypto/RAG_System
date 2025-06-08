@@ -1,0 +1,67 @@
+/* ---- simple ChatGPT-like layout ---- */
+body{
+  margin:0;
+  font-family:system-ui, sans-serif;
+  display:flex;
+  height:100vh;
+}
+/* sidebar ------------------------------------------------------*/
+#sidebar{
+  width:220px;
+  background:#1f2937;
+  color:#fff;
+  padding:16px;
+  overflow-y:auto;
+}
+#sidebar h2{margin-top:0;font-size:1.1rem;}
+#history-list{
+  list-style:none;padding:0;margin:0;
+}
+#history-list li{
+  padding:6px 4px;
+  cursor:pointer;
+  border-radius:4px;
+}
+#history-list li:hover{
+  background:#374151;
+}
+
+/* main chat area ----------------------------------------------*/
+main{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  height:100%;
+}
+#chat-window{
+  flex:1;
+  padding:20px;
+  overflow-y:auto;
+  background:#f3f4f6;
+}
+.msg{margin-bottom:16px;max-width:75%;}
+.msg.user{align-self:flex-end;text-align:right;}
+.msg.assistant{align-self:flex-start;}
+
+.msg.user{background:#dbeafe;padding:10px;border-radius:8px;}
+.msg.assistant{background:#fff;padding:10px;border-radius:8px;}
+
+.inline-img{max-width:480px;border:1px solid #ccc;margin-top:8px;}
+.tbl-frame{
+  width:520px;height:260px;border:1px solid #aaa;
+  margin-top:8px;background:#fff;
+}
+
+/* prompt form --------------------------------------------------*/
+#prompt-form{
+  display:flex;gap:8px;
+  padding:10px;background:#fff;border-top:1px solid #e5e7eb;
+}
+#prompt{
+  flex:1;resize:vertical;font-size:1rem;padding:8px;
+}
+#prompt-form button{
+  padding:0 16px;font-size:1rem;background:#2563eb;
+  color:#fff;border:none;border-radius:4px;cursor:pointer;
+}
+#prompt-form button:hover{background:#1e40af;}

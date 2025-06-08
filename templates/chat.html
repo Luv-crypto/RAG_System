@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RAG Chat · Hep-Cavity</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <aside id="sidebar">
+    <h2>History</h2>
+    <ul id="history-list"></ul>
+  </aside>
+
+  <main>
+    <div id="chat-window"></div>
+
+    <form id="prompt-form">
+      <textarea id="prompt" rows="2" placeholder="Ask me anything…"></textarea>
+      <button>Send</button>
+    </form>
+  </main>
+
+<script>
+const chatWin   = document.getElementById("chat-window");
+const promptInp = document.getElementById("prompt");
+const histUl    = document.getElementById("history-list");
+
+// --- helpers ---------------------------------------------------
+function addMsg(role, html) {
+   const msg = document.createElement("div");
+   msg.className = "msg " + role;
+   msg.innerHTML = html;
+   chatWin.appendChild(msg);
+   chatWin.scrollTop = chatWin.scrollHeight;
+}
+
+function loadHistory() {
+  fetch("/history")
+    .then(r=>r.json())
+    .then(arr=>{
+      histUl.innerHTML="";
+      arr.forEach((m,i)=>{
+        if(m.role==="user"){
+          const li=document.createElement("li");
+          li.textContent = m.html.replace(/<[^>]+>/g,"").slice(0,40);
+          li.onclick = ()=>{ chatWin.innerHTML="";
+                             arr.forEach(mm=>addMsg(mm.role,mm.html));}
+          histUl.appendChild(li);
+        }
+      });
+    });
+}
+loadHistory();   // on first load
+
+// --- submit prompt --------------------------------------------
+document.getElementById("prompt-form").addEventListener("submit",ev=>{
+  ev.preventDefault();
+  const q = promptInp.value.trim();
+  if(!q) return;
+  promptInp.value="";
+  addMsg("user", q.replace(/</g,"&lt;"));
+  fetch("/chat",{
+     method:"POST",
+     headers:{"Content-Type":"application/json"},
+     body:JSON.stringify({message:q})
+  })
+  .then(r=>r.json())
+  .then(res=>{
+     addMsg("assistant", res.answer_html);
+     (res.media||[]).forEach(([kind,url])=>{
+        if(kind==="img"){
+            addMsg("assistant", `<img src="${url}" class="inline-img">`);
+        }else{
+            addMsg("assistant",
+              `<iframe src="${url}" class="tbl-frame"></iframe>`);
+        }
+     });
+     loadHistory();
+  });
+});
+</script>
+</body>
+</html>
