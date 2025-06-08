@@ -23,7 +23,7 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = "hd39u4h3j4iejfioj3948jf0394jf0394jf0j394jf0394"
 
 # ---------- in-memory session store ------------------------------
-# { session_id : [ {role, html, ts}, ... ] } 
+# { session_id : [ {role, html, ts}, ... ] }
 CHAT_LOGS = {}
 
 
