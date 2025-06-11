@@ -639,7 +639,7 @@ def smart_query(
     --- MATERIAL ---
     {''.join(ctx)}
     --- END MATERIAL ---
-
+  
     Question: "{question}"
     """)
     answer = _gem_chat(full_prompt)
@@ -678,7 +678,7 @@ def smart_query(
             else:
                 md_text = Path(p).read_text(encoding="utf-8")
                 display(Markdown(md_text))
-    except ImportError:
+    except ImportError: 
         # If not in notebook, just print text  paths
         print(answer)
         for kind, p in show:

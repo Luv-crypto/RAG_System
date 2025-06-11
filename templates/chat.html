@@ -9,6 +9,10 @@
   <aside id="sidebar">
     <h2>History</h2>
     <ul id="history-list"></ul>
+    <h2>
+  <a href="/logout" style="float:right;font-size:0.8em">Log out</a>
+</h2>
+
   </aside>
 
   <main>
@@ -16,7 +20,15 @@
 
     <form id="prompt-form">
       <textarea id="prompt" rows="2" placeholder="Ask me anything…"></textarea>
-      <button>Send</button>
+      <button>Send</button> 
+      <input
+  type="file"
+  id="pdf-upload"
+  name="pdf"
+  accept="application/pdf"
+  style="margin-left:8px; align-self:center;"
+  onchange="handleFileUpload(this)"
+  >
     </form>
   </main>
 
@@ -26,32 +38,63 @@ const promptInp = document.getElementById("prompt");
 const histUl    = document.getElementById("history-list");
 
 // --- helpers ---------------------------------------------------
-function addMsg(role, html) {
+function addMsg(role, html, autoScroll = true)  {
    const msg = document.createElement("div");
    msg.className = "msg " + role;
    msg.innerHTML = html;
    chatWin.appendChild(msg);
-   chatWin.scrollTop = chatWin.scrollHeight;
+   if (autoScroll) {
+    chatWin.scrollTop = chatWin.scrollHeight; }
+    
+    return msg 
+   }
+function handleFileUpload(input) {
+  if (!input.files.length) return;
+  const formData = new FormData();
+  formData.append('pdf', input.files[0]);
+  fetch('/upload', { method: 'POST', body: formData })
+    .then(res => res.text())
+    .then(msg => { alert(msg); input.value = null; })
+    .catch(() => alert('Upload failed'));
 }
-
 function loadHistory() {
   fetch("/history")
-    .then(r=>r.json())
-    .then(arr=>{
-      histUl.innerHTML="";
-      arr.forEach((m,i)=>{
-        if(m.role==="user"){
-          const li=document.createElement("li");
-          li.textContent = m.html.replace(/<[^>]+>/g,"").slice(0,40);
-          li.onclick = ()=>{ chatWin.innerHTML="";
-                             arr.forEach(mm=>addMsg(mm.role,mm.html));}
-          histUl.appendChild(li);
-        }
+    .then(r => r.json())
+    .then(arr => {
+      histUl.innerHTML = "";
+
+      arr.forEach((m, i) => {
+        if (m.role !== "user") return;
+
+        const li = document.createElement("li");
+        li.textContent = m.html.replace(/<[^>]+>/g, "").slice(0, 40);
+
+        li.onclick = () => {
+        chatWin.innerHTML = "";
+ 
+        const elems = [];               // keep references to every turn element
+        arr.forEach((mm, j) => {
+          elems.push(addMsg(mm.role, mm.html,false));
+        });
+
+        const target = elems[i];        // i == index of the clicked user turn
+
+        // Wait one paint-cycle so the browser knows the elements’ positions,
+        // then scroll the chat container to the target’s offset.
+        requestAnimationFrame(() => {
+          chatWin.scrollTo({
+            top:  target.offsetTop - 8,  // small margin
+            behavior: "smooth"
+          });
+        });
+      };
+
+
+        histUl.appendChild(li);
       });
     });
 }
-loadHistory();   // on first load
-
+loadHistory();
 // --- submit prompt --------------------------------------------
 document.getElementById("prompt-form").addEventListener("submit",ev=>{
   ev.preventDefault();
