@@ -1,0 +1,15 @@
+<!DOCTYPE html><html><body>
+<h2>{{ 'Register' if mode=='register' else 'Login' }}</h2>
+<form method="post">
+  <input name="user" placeholder="username" required><br>
+  <input name="pw" type="password" placeholder="password" required><br>
+  <button>{{ 'Create account' if mode=='register' else 'Sign in' }}</button>
+</form>
+<p>
+  {% if mode=='login' %}
+    No account? <a href="/register">Register</a>
+  {% else %}
+    Have an account? <a href="/login">Login</a>
+  {% endif %}
+</p>
+</body></html>
