@@ -11,7 +11,7 @@ import textwrap
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
 import chromadb
 import nest_asyncio
@@ -123,12 +123,133 @@ def _flatten_meta(meta: Dict) -> Dict:
             flat[k] = v
     return flat
 
-def _summarise(text: str, kind: str) -> str:
+
+# ---------------------------------------------------------------------
+# Helper: craft a single human-readable sentence from list-like metadata
+# ---------------------------------------------------------------------
+def _fmt_list(xs: List[str]) -> str:
+    if not xs:
+        return ""
+    if len(xs) == 1:
+        return xs[0]
+    return ", ".join(xs[:-1]) + f", and {xs[-1]}"
+
+
+CAP_RE = re.compile(r"^(table|tab\.)\s+[ivxlcdm\d]+\b", re.I)   # Table II / Tab. 3 …
+
+def _find_caption(lines, direction="below", max_scan=8):
+    """Scan up to `max_scan` non-blank lines above/below the grid."""
+    seq = lines if direction == "below" else reversed(lines)
+    seen = 0
+    for ln in seq:
+        txt = ln.strip().strip("| ").strip()      # strip leading '|' if inside grid
+        if not txt:
+            continue
+        if CAP_RE.match(txt):
+            return txt
+        seen += 1
+        if seen >= max_scan:
+            break
+    return ""
+
+# ---------------------------------------------------------------------
+# 1)  IMAGE  — richer retrieval-aware summary
+# ---------------------------------------------------------------------
+def _gen_image_summary(path: str,
+                       caption: str,
+                       meta: Dict[str, Any],
+                       max_words: int = 200) -> str:
     """
-    Ask Gemini for a 200-word summary of the given text snippet (first ~5000 chars).
+    Produce a figure summary that *naturally* weaves in the paper’s context
+    (title, diseases, methodology, keywords) so that vector search later
+    binds the image back to the right document.
     """
-    prompt = f"Give a precise 200-word summary of the following {kind}:\n\n{text[:5000]}"
-    return _gem_chat(prompt)
+    title      = meta.get("title", "")            # may be empty
+    diseases   = _fmt_list(meta.get("Diseases", []))
+    keywords   = _fmt_list(meta.get("keywords", []))
+
+    context_bits = [
+        f"from the paper titled “{title}”" if title else "",
+        f"focused on {diseases}"            if diseases else "",
+        f"({keywords})"                     if keywords else ""
+    ]
+    context = " ".join([b for b in context_bits if b]).strip()
+
+    prompt_header = (
+        "You are an expert science writer helping a RAG system.\n"
+        "Write a concise, retrieval-friendly figure summary (≤ "
+        f"{max_words} words).\n\n"
+        "✱ What to include\n"
+        "  • The scientific context (disease/topic, method) in one phrase.\n"
+        "  • What the image visually shows (axes, flows, key elements).\n"
+        "  • Any numerical results or qualitative comparisons visible.\n"
+        "  • Mention the provided caption if it clarifies symbols.\n"
+        "✱ What to avoid\n"
+        "  • Guessing beyond image + caption + metadata.\n"
+        "  • Generic filler (e.g., “This is a figure…”).\n\n"
+    )
+
+    with open(path, "rb") as f:
+        parts = [
+            {"mime_type": "image/png", "data": f.read()},
+            prompt_header +
+            f"Context  : {context or 'N/A'}\n"
+            f"Caption   : {caption or 'N/A'}\n"
+            f"Metadata  : {json.dumps(meta, ensure_ascii=False)}\n\n"
+            "Write the summary:"
+        ]
+    return _gem.generate_content(parts).text.strip()
+
+
+# ---------------------------------------------------------------------
+# 2)  TABLE — richer retrieval-aware summary
+# ---------------------------------------------------------------------
+def _gen_table_summary(table_md: str,
+                       caption: str,
+                       meta: Dict[str, Any],
+                       max_words: int = 200) -> str:
+    """
+    Produce a table summary that embeds the scientific context so the
+    RAG system can later retrieve the correct document by content.
+    """
+    title     = meta.get("title", "")
+    diseases  = _fmt_list(meta.get("Diseases", []))
+    method    = meta.get("Methodology", "")
+    keywords  = _fmt_list(meta.get("keywords", []))
+
+    context_bits = [
+        f"from “{title}”"     if title else "",
+        f"on {diseases}"      if diseases else "",
+        f"using {method}"     if method else "",
+        f"({keywords})"       if keywords else ""
+    ]
+    context = " ".join([b for b in context_bits if b]).strip()
+
+    prompt = f"""
+You are an expert science writer helping a RAG system.
+
+Task: Write a succinct (≤ {max_words} words) yet retrieval-friendly table
+summary that *naturally* embeds the study context and key metrics.
+
+✱ Must cover
+  • Scientific context (topic/disease, method) in a single clause.
+  • What variables or metrics the table reports (accuracy, F1, etc.).
+  • Any standout values or comparisons (e.g., “Proposed method reaches 97% vs. MobileNetV2’s 91%”).
+  • Clarify the caption if it uses abbreviations.
+
+✱ Data provided
+  • Table (first 4000 chars of Markdown):
+{table_md[:]}
+
+  • Caption  : {caption or 'N/A'}
+  • Context  : {context or 'N/A'}
+  • Full metadata (JSON for reference, don’t dump): {json.dumps(meta, ensure_ascii=False)}
+
+Write the summary now:
+"""
+    return _gem_chat(prompt).strip()
+
+
 
 # ─────────────────── Docling converter ────────────────────────
 pipe_opts = PdfPipelineOptions(
@@ -169,9 +290,7 @@ def ingest_documents(pattern: str, chunk_size: int = 1500) -> None:
     if not pdfs:
         raise FileNotFoundError(f"No PDFs matched pattern: {pattern}")
 
-    # Regex to catch Markdown‐style tables
-    tbl_re = re.compile(r"(?:\|.*\n\|[ \t]*[-:]+.*\n(?:\|.*\n)*)", re.MULTILINE)
-
+    
     for pdf in pdfs:
         p = Path(pdf)
         print(f"\n▶ Processing {p.name} …")
@@ -216,54 +335,77 @@ def ingest_documents(pattern: str, chunk_size: int = 1500) -> None:
             fn = f"{uuid.uuid4()}_{p.stem}_p{pg}.png"
             fp = OBJ_DIR_IMG / fn
             img.save(fp, "PNG")
+            caption_image = pic.caption_text(ddoc) or "" 
 
             # Determine which text‐chunk “owns” this page:
             idx = min(int((pg - 1) / max_pg * len(chunk_ids)), len(chunk_ids) - 1)
             parent = chunk_ids[idx]
 
             # Summarize that figure (send PNG → Gemini)
-            summ = image_summaries(str(fp))
-            img_id = str(uuid.uuid4())
+            summ = _gen_image_summary(str(fp), caption_image, meta_flat)  # unchanged
+            img_id     = str(uuid.uuid4())
+            embed_text = f"{caption_image}\n\n{summ}" if caption_image else summ
 
             collection_img.add(
                 ids=[img_id],
-                embeddings=[_embed([summ])[0]],
+                embeddings=[_embed([embed_text])[0]],
                 documents=[summ],
                 metadatas=[{
                     **meta_flat,
                     "id": img_id,
                     "parent_chunk_id": parent,
                     "path": str(fp),
+                    "caption": caption_image,
                     "summary": summ
                 }]
             )
+        
+        page_nums_tbl = [t.prov[0].page_no for t in ddoc.tables   if t.prov]
+        max_pg_tbl = max(page_nums_tbl) if page_nums_tbl else 1
 
-        # 6) Extract every Markdown table → save as `.md` + embed 200-word summary
-        for m in tbl_re.finditer(md):
-            tbl_md = m.group(0).strip()
-            pos    = m.start()
-            idx    = pos // chunk_size
-            parent = chunk_ids[min(idx, len(chunk_ids) - 1)]
+    
+
+# --- Table summary generation -------------
+        for tbl in ddoc.tables:
+            tbl_md  = tbl.export_to_markdown(ddoc).strip()
+            pos     = md.find(tbl_md)
+
+            # 1) Docling’s own caption if it already starts with “Table …”
+            caption = (tbl.caption_text(ddoc) or "").strip()
+            if not CAP_RE.match(caption):
+                # 2) search ↑ above the grid
+                caption = _find_caption(md[:pos].splitlines(), "above") or caption
+
+            if not CAP_RE.match(caption):
+                # 3) search ↓ below the grid
+                caption = _find_caption(md[pos + len(tbl_md):].splitlines(), "below") or caption
+
+            # ---------- everything below is what you already had ---------------
+            # page → owning chunk
+            pg   = tbl.prov[0].page_no if tbl.prov else 1
+            idx  = min(int((pg - 1) / max_pg_tbl * len(chunk_ids)), len(chunk_ids) - 1)
+            parent = chunk_ids[idx]
 
             tid = str(uuid.uuid4())
             fp  = OBJ_DIR_TBL / f"{tid}.md"
             fp.write_text(tbl_md, encoding="utf-8")
 
-            summ = _summarise(tbl_md, "table")
+
+            summ       = _gen_table_summary(tbl_md, caption, meta_flat)
+            embed_text = f"{caption}\n\n{summ}" if caption else summ
             collection_tbl.add(
-                ids=[tid],
-                embeddings=[_embed([summ])[0]],
-                documents=[summ],
-                metadatas=[{
+                ids        =[tid],
+                embeddings =[_embed([embed_text])[0]],
+                documents  =[summ],
+                metadatas  =[{
                     **meta_flat,
                     "id": tid,
                     "parent_chunk_id": parent,
                     "path": str(fp),
+                    "caption": caption,
                     "summary": summ
                 }]
             )
-
-        print("✓ Indexed", p.name, f": {len(text_chunks)} chunks + media mapped.")
 
 # ═══════════════════════════════════════════════════════════════
 # RETRIEVAL
@@ -547,3 +689,6 @@ def smart_query(
         return answer, show
     else:
         answer
+
+
+        
