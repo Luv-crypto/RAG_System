@@ -27,7 +27,7 @@ app.config["SECRET_KEY"] = "hd39u4h3j4iejfioj3948jf0394jf0394jf0j394jf0394"
 CHAT_LOGS = {}
 
 
-# ---------------- helper -----------------------------------------
+# ---------------- helper -----------------------------------------j
 def _sid(req) -> str:
     """Return existing or new session-id (uuid4)."""
     sid = req.cookies.get(SESSION_COOKIE_KEY)
