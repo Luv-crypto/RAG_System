@@ -3,11 +3,12 @@
 import os, uuid, datetime, json, markdown2
 from pathlib import Path
 from typing import List, Tuple
+import threading, secrets, queue
 
 from flask import (
     Flask, request, jsonify, render_template,
-    send_from_directory, make_response
-)
+    send_from_directory, make_response ,redirect, url_for, Response
+    )
 
 # ---------- your RAG core (imported) ---------------------------
 from rag_scipdf_core import smart_query   # <- must be importable!
@@ -25,6 +26,7 @@ app.config["SECRET_KEY"] = "hd39u4h3j4iejfioj3948jf0394jf0394jf0j394jf0394"
 # ---------- in-memory session store ------------------------------
 # { session_id : [ {role, html, ts}, ... ] }
 CHAT_LOGS = {}
+INGEST_TASKS = {}
 
 
 # ---------------- helper -----------------------------------------j
@@ -256,29 +258,79 @@ def force_login():
 UPLOAD_DIR = ROOT / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+# ───────────────────────────────────────────────────────────────
+# Upload  →  Ingest  →  Cancel
+# ───────────────────────────────────────────────────────────────
+
 @app.route("/upload", methods=["GET", "POST"])
 def upload():
+    """GET  → show upload page
+       POST → save PDF, return JSON {file_path} (no ingestion yet)"""
     uid = _current_uid(request)
     if uid is None:
         return "Login first", 401
 
-    if request.method == "POST":
-        f = request.files.get("pdf")
-        if not (f and f.filename.lower().endswith(".pdf")):
-            return "PDF only", 400
+    if request.method == "GET":
+        return render_template("upload.html")
 
-        user_folder = UPLOAD_DIR / f"user_{uid}"
-        user_folder.mkdir(exist_ok=True)
+    # POST branch
+    f = request.files.get("pdf")
+    if not (f and f.filename.lower().endswith(".pdf")):
+        return "PDF only", 400
 
-        save_path = user_folder / f"{secrets.token_hex(8)}_{f.filename}"
-        f.save(save_path)
+    user_dir = UPLOAD_DIR / f"user_{uid}"
+    user_dir.mkdir(exist_ok=True)
 
-        # call your existing ingestion (per-user collection name)
+    save_path = user_dir / f"{secrets.token_hex(8)}_{f.filename}"
+    f.save(save_path)
+    return jsonify({"file_path": str(save_path)}), 200
+
+
+@app.route("/ingest", methods=["POST"])
+def ingest():
+    """Kick off ingestion in a background thread, return task_id."""
+    data = request.get_json(force=True)
+    path = Path(data.get("file_path", ""))
+    if not path.exists():
+        return "file not found", 400
+
+    stop_flag = threading.Event()
+    task_id   = secrets.token_hex(8)
+
+    def worker():
         from rag_scipdf_core import ingest_documents
-        ingest_documents(str(save_path))      # one-file pattern
-        return "Ingested!", 200
+        try:
+            ingest_documents(str(path), stop_event=stop_flag)
+            INGEST_TASKS[task_id]["status"] = "complete"
+        except Exception as e:
+            INGEST_TASKS[task_id]["status"] = f"failed: {e}"
+        finally:
+            # leave dict entry until front-end fetches status once more
+            pass
 
-    return render_template("upload.html")
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    INGEST_TASKS[task_id] = {"thread": t, "stop": stop_flag,"status":"running"}
+    return jsonify({"task_id": task_id}), 202
+
+
+@app.route("/ingest/cancel/<task_id>", methods=["POST"])
+def cancel_ingest(task_id):
+    task = INGEST_TASKS.get(task_id)
+    if not task: return "task not found", 404
+    task["stop"].set()
+    task["status"] = "cancelled"
+    return "cancelled", 200
+
+@app.route("/ingest/status/<task_id>")
+def ingest_status(task_id):
+    task = INGEST_TASKS.get(task_id)
+    if not task:
+        return jsonify({"status": "unknown"}), 404
+    return jsonify({"status": task.get("status", "running")})
+
+
+
 
 
 

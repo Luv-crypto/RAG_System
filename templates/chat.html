@@ -6,119 +6,250 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <!-- Ingesting Modal -->
+  <div id="ingest-modal" class="hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h3 id="ingest-title">Ingesting your PDF…</h3>
+
+      <div id="ingest-bar"><div id="ingest-progress"></div></div>
+
+      <!-- Cancel button -->
+      <div style="display:flex;justify-content:center;margin-top:12px;">
+        <button id="ingest-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Modal (complete / cancelled) -->
+  <div id="status-modal" class="hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content" id="status-text"></div>
+  </div>
+
+  <!--  Side bar + chat  -->
   <aside id="sidebar">
     <h2>History</h2>
     <ul id="history-list"></ul>
-    <h2>
-  <a href="/logout" style="float:right;font-size:0.8em">Log out</a>
-</h2>
-
+    <h2><a href="/logout" style="float:right;font-size:0.8em">Log out</a></h2>
   </aside>
 
   <main>
     <div id="chat-window"></div>
 
-    <form id="prompt-form">
+        <form id="prompt-form">
+      <!-- + (upload) -->
+      <input type="file" id="pdf-upload" name="pdf" accept="application/pdf"
+            hidden onchange="handleFileUpload(this)">
+      <label for="pdf-upload" id="pdf-plus">+</label>
+
+      <!-- prompt textarea -->
       <textarea id="prompt" rows="2" placeholder="Ask me anything…"></textarea>
-      <button>Send</button> 
-      <input
-  type="file"
-  id="pdf-upload"
-  name="pdf"
-  accept="application/pdf"
-  style="margin-left:8px; align-self:center;"
-  onchange="handleFileUpload(this)"
-  >
+
+      <!-- send arrow -->
+      <button id="send-btn" type="submit">➜</button>
     </form>
+
   </main>
 
 <script>
+/* --------------------------------------------------  globals */
 const chatWin   = document.getElementById("chat-window");
 const promptInp = document.getElementById("prompt");
 const histUl    = document.getElementById("history-list");
 
-// --- helpers ---------------------------------------------------
-function addMsg(role, html, autoScroll = true)  {
-   const msg = document.createElement("div");
-   msg.className = "msg " + role;
-   msg.innerHTML = html;
-   chatWin.appendChild(msg);
-   if (autoScroll) {
-    chatWin.scrollTop = chatWin.scrollHeight; }
-    
-    return msg 
-   }
+/* --------------------------------------------------  helpers */
+
+/* Add a bubble and (NEW) mark it .bubble-compact if it contains a table/img/iframe */
+function addMsg(role, html, autoScroll = true) {
+  const msg = document.createElement("div");
+  msg.className = "msg " + role;
+  msg.innerHTML = html;
+
+  if (msg.querySelector("table, img, iframe")) msg.classList.add("bubble-compact");
+
+  chatWin.appendChild(msg);
+  if (autoScroll) chatWin.scrollTop = chatWin.scrollHeight;
+  return msg;
+}
+
+/* Finish ingestion: hide progress modal, show status modal 2 s */
+function finishIngestion(message) {
+  clearInterval(simInt);
+  document.getElementById("ingest-modal").classList.add("hidden");
+  uploadXhr = null;
+
+  const statusModal = document.getElementById("status-modal");
+  document.getElementById("status-text").textContent = message;
+  statusModal.classList.remove("hidden");
+  setTimeout(() => statusModal.classList.add("hidden"), 2000);
+}
+
+
+/* ─────────── main entry ──────── */
+/* ─────────────── globals ─────────────── */
+let uploadXhr   = null;     // XMLHttpRequest for stage-1 upload
+let currentTask = null;     // task_id returned by /ingest
+let simInt      = null;     // id for fake-progress interval
+
+/* ────────────── stage 0  — choose file ────────────── */
 function handleFileUpload(input) {
   if (!input.files.length) return;
-  const formData = new FormData();
-  formData.append('pdf', input.files[0]);
-  fetch('/upload', { method: 'POST', body: formData })
-    .then(res => res.text())
-    .then(msg => { alert(msg); input.value = null; })
-    .catch(() => alert('Upload failed'));
+
+  const modal     = document.getElementById("ingest-modal");
+  const bar       = document.getElementById("ingest-progress");
+  const cancelBtn = document.getElementById("ingest-cancel");
+
+  modal.classList.remove("hidden");
+  bar.style.width = "0%";
+
+  /* 1️⃣  UPLOAD  (real progress 0 → 50 %) */
+  uploadXhr = new XMLHttpRequest();
+  uploadXhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      const pct = (e.loaded / e.total) * 50;   // first half of bar
+      bar.style.width = pct + "%";
+    }
+  };
+  uploadXhr.onload = () => {
+    try {
+      const { file_path } = JSON.parse(uploadXhr.responseText);
+      startIngestion(file_path);               // → stage 2
+    } catch {
+      finish("Upload failed");
+    }
+  };
+  uploadXhr.onerror = () => finish("Upload failed");
+  uploadXhr.onabort = () => finish("Ingestion cancelled");
+
+  /* Cancel during UPLOAD just aborts XHR */
+  cancelBtn.onclick = () => { if (uploadXhr) uploadXhr.abort(); };
+
+  const fd = new FormData();
+  fd.append("pdf", input.files[0]);
+  uploadXhr.open("POST", "/upload", true);
+  uploadXhr.send(fd);
 }
+
+/* ────────────── stage 2 — ingestion  ────────────── */
+function startIngestion(filePath) {
+  const bar       = document.getElementById("ingest-progress");
+  const cancelBtn = document.getElementById("ingest-cancel");
+
+  fetch("/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file_path: filePath })
+  })
+  .then(r => r.json())
+  .then(({ task_id }) => {
+    currentTask = task_id;
+    fakeProgress();   // drift bar 50 → 98 %
+    pollStatus();     // start polling /ingest/status
+
+    /* Cancel now sends /ingest/cancel */
+    cancelBtn.onclick = () => {
+      if (currentTask) fetch("/ingest/cancel/" + currentTask, { method:"POST" });
+      finish("Ingestion cancelled");
+    };
+  })
+  .catch(() => finish("Ingestion failed"));
+}
+
+/* ───── fake bar drift while server works (50 → 98 %) ───── */
+function fakeProgress() {
+  const bar = document.getElementById("ingest-progress");
+  let pct = 50;
+  clearInterval(simInt);                 // safety
+  simInt = setInterval(() => {
+    pct = Math.min(pct + Math.random()*4, 98);
+    bar.style.width = pct + "%";
+  }, 400);
+}
+
+/* ───── poll /ingest/status/<task_id> every 1.5 s ───── */
+function pollStatus() {
+  if (!currentTask) return;
+  fetch("/ingest/status/" + currentTask)
+    .then(r => r.json())
+    .then(({ status }) => {
+      if (status === "running") {
+        setTimeout(pollStatus, 7000);    // poll again
+      } else {
+        const msg =
+          status === "complete"  ? "Ingestion complete"  :
+          status === "cancelled" ? "Ingestion cancelled" :
+                                   "Ingestion failed";
+        finish(msg);
+      }
+    })
+    .catch(() => finish("Ingestion failed"));
+}
+
+/* ────────────── common cleanup + popup ────────────── */
+function finish(message) {
+  clearInterval(simInt);
+  uploadXhr   = null;
+  currentTask = null;
+
+  const modal = document.getElementById("ingest-modal");
+  const bar   = document.getElementById("ingest-progress");
+  modal.classList.add("hidden");
+  bar.style.width = "100%";
+
+  const sm = document.getElementById("status-modal");
+  document.getElementById("status-text").textContent = message;
+  sm.classList.remove("hidden");
+  setTimeout(() => sm.classList.add("hidden"), 2000);
+}
+
+/* History list (unchanged) */
 function loadHistory() {
   fetch("/history")
     .then(r => r.json())
     .then(arr => {
       histUl.innerHTML = "";
-
       arr.forEach((m, i) => {
         if (m.role !== "user") return;
-
         const li = document.createElement("li");
-        li.textContent = m.html.replace(/<[^>]+>/g, "").slice(0, 40);
-
+        li.textContent = m.html.replace(/<[^>]+>/g,"").slice(0,40);
         li.onclick = () => {
-        chatWin.innerHTML = "";
- 
-        const elems = [];               // keep references to every turn element
-        arr.forEach((mm, j) => {
-          elems.push(addMsg(mm.role, mm.html,false));
-        });
-
-        const target = elems[i];        // i == index of the clicked user turn
-
-        // Wait one paint-cycle so the browser knows the elements’ positions,
-        // then scroll the chat container to the target’s offset.
-        requestAnimationFrame(() => {
-          chatWin.scrollTo({
-            top:  target.offsetTop - 8,  // small margin
-            behavior: "smooth"
+          chatWin.innerHTML = "";
+          const elems = [];
+          arr.forEach(mm => elems.push(addMsg(mm.role, mm.html,false)));
+          requestAnimationFrame(() => {
+            chatWin.scrollTo({ top: elems[i].offsetTop-8, behavior:"smooth" });
           });
-        });
-      };
-
-
+        };
         histUl.appendChild(li);
       });
     });
 }
 loadHistory();
-// --- submit prompt --------------------------------------------
-document.getElementById("prompt-form").addEventListener("submit",ev=>{
+
+/* Prompt submit → send to back end */
+document.getElementById("prompt-form").addEventListener("submit", ev => {
   ev.preventDefault();
   const q = promptInp.value.trim();
-  if(!q) return;
-  promptInp.value="";
+  if (!q) return;
+  promptInp.value = "";
   addMsg("user", q.replace(/</g,"&lt;"));
-  fetch("/chat",{
-     method:"POST",
-     headers:{"Content-Type":"application/json"},
-     body:JSON.stringify({message:q})
+  fetch("/chat", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({ message:q })
   })
-  .then(r=>r.json())
-  .then(res=>{
-     addMsg("assistant", res.answer_html);
-     (res.media||[]).forEach(([kind,url])=>{
-        if(kind==="img"){
-            addMsg("assistant", `<img src="${url}" class="inline-img">`);
-        }else{
-            addMsg("assistant",
-              `<iframe src="${url}" class="tbl-frame"></iframe>`);
-        }
-     });
-     loadHistory();
+  .then(r => r.json())
+  .then(res => {
+    addMsg("assistant", res.answer_html);
+    (res.media||[]).forEach(([kind,url]) => {
+      if (kind==="img") {
+        addMsg("assistant", `<img src="${url}" class="inline-img">`);
+      } else {
+        addMsg("assistant", `<iframe src="${url}" class="tbl-frame"></iframe>`);
+      }
+    });
+    loadHistory();
   });
 });
 </script>

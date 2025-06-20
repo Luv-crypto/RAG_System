@@ -12,7 +12,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
-
+from threading import Event
 import chromadb
 import nest_asyncio
 import google.generativeai as genai
@@ -275,7 +275,7 @@ Text:
 # ═══════════════════════════════════════════════════════════════
 # INGESTION
 # ═══════════════════════════════════════════════════════════════
-def ingest_documents(pattern: str, chunk_size: int = 1500) -> None:
+def ingest_documents(pattern: str, chunk_size: int = 1500,stop_event: Event | None = None) -> None:
     """
     Ingest all PDFs matching `pattern` into three Chroma collections:
       • scientific_chunks   (text chunks, embeddings & metadata)
@@ -286,12 +286,17 @@ def ingest_documents(pattern: str, chunk_size: int = 1500) -> None:
       - PNG figures under object_store/images/
       - Markdown tables under object_store/tables/
     """
+    stop_event = stop_event or Event()   # use dummy flag if caller passed None
+
     pdfs = glob.glob(pattern, recursive=True)
     if not pdfs:
         raise FileNotFoundError(f"No PDFs matched pattern: {pattern}")
 
-    
     for pdf in pdfs:
+        if stop_event.is_set():          # ← graceful early-exit
+            print("▶ Ingestion cancelled by user")
+            return
+
         p = Path(pdf)
         print(f"\n▶ Processing {p.name} …")
         # 1) Use Docling to convert → Markdown + page images + saved PNGs
