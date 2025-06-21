@@ -55,7 +55,8 @@ def _run_rag(prompt: str) -> Tuple[str, List[Tuple[str, str]]]:
       html_answer  – safe HTML (markdown → html)
       media_list   – [("img", rel_path | url), ("tbl", rel_path | url), …]
     """
-    answer_text, media = smart_query(prompt, return_media=True)  # <-- small helper added in rag_scipdf_core
+    uid = _current_uid(request)
+    answer_text, media = smart_query(prompt, user_id= uid , return_media=True)  # <-- small helper added in rag_scipdf_core
     # answer_text is markdown.  Convert ↓
     html_answer = markdown2.markdown(answer_text, extras=["fenced-code-blocks", "tables"])
 
@@ -171,16 +172,27 @@ def history():
 import sqlite3, hashlib, secrets
 DB_PATH = ROOT / "users.db"
 
+
 def _get_db():
     db = sqlite3.connect(DB_PATH)
+    # ── ensure users table exists ─────────────────────────────────────
     db.execute("""
-    CREATE TABLE IF NOT EXISTS chats (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id  INTEGER,
-    role     TEXT,          -- 'user' | 'assistant'
-    html     TEXT,
-    ts       TEXT
-    )""")
+      CREATE TABLE IF NOT EXISTS users (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        username  TEXT UNIQUE,
+        pw_hash   TEXT
+      )
+    """)
+    # ── ensure chats table exists ─────────────────────────────────────
+    db.execute("""
+      CREATE TABLE IF NOT EXISTS chats (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id   INTEGER,
+        role      TEXT,    -- 'user' or 'assistant'
+        html      TEXT,
+        ts        TEXT
+      )
+    """)
     return db
 
 def _hash_pw(pw: str) -> str:
@@ -299,6 +311,7 @@ def upload():
 @app.route("/ingest", methods=["POST"])
 def ingest():
     """Kick off ingestion in a background thread, return task_id."""
+    uid = _current_uid(request)
     data = request.get_json(force=True)
     path = Path(data.get("file_path", ""))
     if not path.exists():
@@ -310,7 +323,7 @@ def ingest():
     def worker():
         from rag_scipdf_core import ingest_documents
         try:
-            ingest_documents(str(path), stop_event=stop_flag)
+            ingest_documents(str(path), stop_event=stop_flag, user_id=uid)
             INGEST_TASKS[task_id]["status"] = "complete"
         except Exception as e:
             INGEST_TASKS[task_id]["status"] = f"failed: {e}"

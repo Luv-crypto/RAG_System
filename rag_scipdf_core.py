@@ -275,7 +275,7 @@ Text:
 # ═══════════════════════════════════════════════════════════════
 # INGESTION
 # ═══════════════════════════════════════════════════════════════
-def ingest_documents(pattern: str, chunk_size: int = 1500,stop_event: Event | None = None) -> None:
+def ingest_documents(pattern: str,user_id : int, chunk_size: int = 1500, stop_event: Event | None = None) -> None:
     """
     Ingest all PDFs matching `pattern` into three Chroma collections:
       • scientific_chunks   (text chunks, embeddings & metadata)
@@ -309,6 +309,7 @@ def ingest_documents(pattern: str, chunk_size: int = 1500,stop_event: Event | No
         meta_dict["path"] = str(p)
         meta_flat = _flatten_meta(meta_dict)
 
+
         # 3) Split the full Markdown into ~chunk_size pieces
         text_chunks = [md[i : i + chunk_size] for i in range(0, len(md), chunk_size)]
         chunk_ids   = [str(uuid.uuid4()) for _ in text_chunks]
@@ -319,7 +320,8 @@ def ingest_documents(pattern: str, chunk_size: int = 1500,stop_event: Event | No
             flat = {
                 **meta_flat,
                 "chunk_id": cid,
-                "chunk_preview": chunk[:400]
+                "chunk_preview": chunk[:400],
+                "user_id" :user_id
             }
             collection_txt.add(
                 ids=[cid],
@@ -361,7 +363,8 @@ def ingest_documents(pattern: str, chunk_size: int = 1500,stop_event: Event | No
                     "parent_chunk_id": parent,
                     "path": str(fp),
                     "caption": caption_image,
-                    "summary": summ
+                    "summary": summ,
+                    "user_id" :user_id
                 }]
             )
         
@@ -408,7 +411,8 @@ def ingest_documents(pattern: str, chunk_size: int = 1500,stop_event: Event | No
                     "parent_chunk_id": parent,
                     "path": str(fp),
                     "caption": caption,
-                    "summary": summ
+                    "summary": summ,
+                    "user_id" :user_id
                 }]
             )
 
@@ -443,7 +447,7 @@ def _zip_ids_meta(res) -> List[Dict]:
         out.append(d)
     return out
 
-def _fetch_media_linked(chunk_ids: List[str]) -> Tuple[List[Dict], List[Dict]]:
+def _fetch_media_linked(chunk_ids: List[str],user_id:int) -> Tuple[List[Dict], List[Dict]]:
     """
     Given a list of text‐chunk IDs, fetch all images/tables in Chroma whose
     `parent_chunk_id` is in that list. Returns two lists of dicts (imgs, tables).
@@ -451,7 +455,13 @@ def _fetch_media_linked(chunk_ids: List[str]) -> Tuple[List[Dict], List[Dict]]:
     if not chunk_ids:
         return [], []
 
-    where_clause = {"parent_chunk_id": {"$in": chunk_ids}}
+    user_clause = {"user_id": user_id}     # simple equality form
+    where_clause = {
+        "$and": [
+            user_clause,
+            {"parent_chunk_id": {"$in": chunk_ids}}
+        ]
+    }
     imgs = _zip_ids_meta(collection_img.get(where=where_clause, include=["metadatas"]))
     tbls = _zip_ids_meta(collection_tbl.get(where=where_clause, include=["metadatas"]))
     return imgs, tbls
@@ -501,6 +511,7 @@ def _top_media_by_similarity(question_vec: List[float],
 
 def smart_query(
         question: str,
+        user_id: int,
         top_k: int = 3,
         return_media: bool = False   # ← new optional kw-arg
     ) -> str | tuple[str, list[tuple[str,str]]]: 
@@ -522,42 +533,65 @@ def smart_query(
     meta_raw = _safe_json(_gem_chat(_QUERY_PROMPT + question))
     hits_txt = None
 
-    for flt in _candidate_filters(meta_raw):
-        hits_txt = collection_txt.query(
-            [q_vec],
-            n_results=top_k,
-            where=flt,
-            include=["documents", "metadatas"]
-        )
-        # If we got at least one hit, keep that filter and break
-        if hits_txt and hits_txt["ids"] and len(hits_txt["ids"][0]) > 0:
-            break
+    # ------------------------------------------------------------------
+# Build a user-scoped WHERE clause and query Chroma
+# ------------------------------------------------------------------
+    for i, flt in enumerate(_candidate_filters(meta_raw), start=1):
+        # 1️⃣ Always restrict to the current user
 
-    if not hits_txt or not hits_txt["ids"] or len(hits_txt["ids"][0]) == 0:
-        # Fallback: pure semantic (no filter)
-        hits_txt = collection_txt.query(
-            [q_vec],
-            n_results=top_k,
-            where=None,
-            include=["documents", "metadatas"]
-        )
+        # --------------------------------------------------------------
+#`````` 1) metadata-aware search, always scoped by user_id
+#`````` --------------------------------------------------------------
+        user_clause = {"user_id": user_id}                # simple equality form
+        hits_txt    = None
 
+
+        for flt in _candidate_filters(meta_raw):
+            # ----- build legal WHERE clause ---------------------------
+            if flt is None:                           # last pass = “no meta filter”
+                where_clause = user_clause            # user only
+            else:
+                where_clause = {                      # user AND metadata
+                    "$and": [user_clause, flt]
+                }
+
+            hits_txt = collection_txt.query(
+                query_embeddings=[q_vec],
+                n_results=top_k,
+                where=where_clause,
+                include=["documents", "metadatas"]
+            )
+            # stop at first non-empty result set
+            if hits_txt and hits_txt["ids"] and hits_txt["ids"][0]:
+                break
+
+        # --------------------------------------------------------------
+        # 2) pure semantic fallback (but still user-scoped)
+        # --------------------------------------------------------------
+        if not hits_txt or not hits_txt["ids"] or not hits_txt["ids"][0]:
+            hits_txt = collection_txt.query(
+                query_embeddings=[q_vec],
+                n_results=top_k,
+                where=user_clause,            # <-- user only, no metadata filter
+                include=["documents", "metadatas"]
+            )
     docs  = hits_txt["documents"][0]
     metas = hits_txt["metadatas"][0]
     chunk_ids = [m["chunk_id"] for m in metas]
 
     # ── 2) Fetch media directly linked by chunk_id ───────────────────────
-    imgs_link, tbls_link = _fetch_media_linked(chunk_ids)
-
+    imgs_link, tbls_link = _fetch_media_linked(chunk_ids,user_id=user_id)
     # ── 3) Semantic‐nearest search in media stores ──────────────────────
     imgs_sem_res = collection_img.query(
         [q_vec],
         n_results=top_k,
+        where={"user_id": user_id},  
         include=["metadatas"]
     )
     tbls_sem_res = collection_tbl.query(
         [q_vec],
         n_results=top_k,
+        where={"user_id": user_id},  
         include=["metadatas"]
     )
     imgs_sem = _zip_ids_meta(imgs_sem_res)
@@ -602,7 +636,8 @@ def smart_query(
         You are given text chunks (academic paper extracts) plus
         concise summaries of images and tables that might belong to them.
 
-        • Answer strictly using ONLY the provided material.
+        • Answer strictly using ONLY the provided material. 
+        • If the answer is not available in chunks and table simply say "Sorry, The  text does not contain information about your question"
         • Cite chunks as (Doc 1), (Doc 2), etc.
         • If an image/table is essential, output exactly
             <<img:FULL_UUID>>   or   <<tbl:FULL_UUID>>
@@ -640,6 +675,7 @@ def smart_query(
     • If an image/table is essential, output exactly
         <<img:FULL_UUID>>   or   <<tbl:FULL_UUID>>
       on its own line (no other text on that line).
+    
 
     --- MATERIAL ---
     {''.join(ctx)}
