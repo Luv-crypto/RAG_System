@@ -86,11 +86,14 @@ def chat_api():
     key = _chat_key(request)
 
 # 1) store user message
-    CHAT_LOGS.setdefault(key, []).append({
-        "role": "user",
-        "html": markdown2.markdown(user_msg),
-        "ts": datetime.datetime.utcnow().isoformat(timespec="seconds")
-    })
+    # 1) store user msg
+    uid = _current_uid(request)
+    db = _get_db()
+    db.execute("INSERT INTO chats (user_id,role,html,ts) VALUES (?,?,?,?)",
+            (uid, "user", markdown2.markdown(user_msg), datetime.datetime.utcnow().isoformat(timespec="seconds")   # Fix A
+))
+    db.commit()
+
 
 
     # 2) call RAG
@@ -109,11 +112,11 @@ def chat_api():
         else:  # tables
             media_html.append(f'<iframe src="{url}" class="tbl-frame"></iframe>')
 
-    CHAT_LOGS[key].append({
-    "role": "assistant",
-    "html": answer_html + "".join(media_html),
-    "ts": datetime.datetime.utcnow().isoformat(timespec="seconds")
-        })
+    db.execute("INSERT INTO chats (user_id,role,html,ts) VALUES (?,?,?,?)",
+           (uid, "assistant", answer_html + "".join(media_html),
+           datetime.datetime.utcnow().isoformat(timespec="seconds") ))
+    db.commit()
+
 
     return jsonify({
         "answer_html": answer_html,
@@ -150,11 +153,16 @@ def media_table(filename):
 
 
 # recent history (optional sidebar) --------------------------------------
-@app.route("/history", methods=["GET"])
+@app.route("/history")
 def history():
-    sid = _chat_key(request)
-    hist = CHAT_LOGS.get(sid, [])
-    return jsonify(hist)
+    uid = _current_uid(request)
+    if uid is None:
+        return jsonify([])
+    rows = _get_db().execute(
+        "SELECT role,html,ts FROM chats WHERE user_id=? ORDER BY id", (uid,)
+    ).fetchall()
+    return jsonify([{"role":r[0],"html":r[1],"ts":r[2]} for r in rows])
+
 
 
 # ───────────────────────────────────────────────────────────────
@@ -166,11 +174,13 @@ DB_PATH = ROOT / "users.db"
 def _get_db():
     db = sqlite3.connect(DB_PATH)
     db.execute("""
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        pw_hash TEXT
-      )""")
+    CREATE TABLE IF NOT EXISTS chats (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id  INTEGER,
+    role     TEXT,          -- 'user' | 'assistant'
+    html     TEXT,
+    ts       TEXT
+    )""")
     return db
 
 def _hash_pw(pw: str) -> str:
