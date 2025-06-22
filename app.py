@@ -12,6 +12,11 @@ from flask import (
 
 # ---------- your RAG core (imported) ---------------------------
 from rag_scipdf_core import smart_query   # <- must be importable!
+from dotenv import load_dotenv
+
+# Load .env into process environment
+load_dotenv()
+
 
 # ---------- constants ------------------------------------------
 ROOT               = Path(__file__).parent.resolve()
@@ -21,7 +26,7 @@ SESSION_COOKIE_KEY = "sid"
 
 # ---------- Flask -------------------------------------------------
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "hd39u4h3j4iejfioj3948jf0394jf0394jf0j394jf0394"
+app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY")
 
 # ---------- in-memory session store ------------------------------
 # { session_id : [ {role, html, ts}, ... ] }
