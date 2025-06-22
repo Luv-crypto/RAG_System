@@ -20,6 +20,9 @@ from dotenv import load_dotenv
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
+from IPython.display import display, Markdown, Image
+from numpy import dot
+from numpy.linalg import norm
 
 load_dotenv()
 
@@ -487,8 +490,6 @@ def _candidate_filters(meta: Dict) -> List[Dict]:
     out.append(None)  # fallback: no filter
     return out
 
-from numpy import dot
-from numpy.linalg import norm
 
 def _top_media_by_similarity(question_vec: List[float],
                              media: Dict[str, Dict],
@@ -715,7 +716,6 @@ def smart_query(
 
     # Display answer + inline media in Jupyter / VS Code if available
     try:
-        from IPython.display import display, Markdown, Image
         display(Markdown(answer))
         for kind, p in show:
             if kind == "img":

@@ -4,6 +4,7 @@ import os, uuid, datetime, json, markdown2
 from pathlib import Path
 from typing import List, Tuple
 import threading, secrets, queue
+import sqlite3, hashlib, secrets
 
 from flask import (
     Flask, request, jsonify, render_template,
@@ -174,7 +175,7 @@ def history():
 # ───────────────────────────────────────────────────────────────
 # 0)  Imports & database helpers
 # ───────────────────────────────────────────────────────────────
-import sqlite3, hashlib, secrets
+
 DB_PATH = ROOT / "users.db"
 
 
