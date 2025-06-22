@@ -1,65 +1,85 @@
-# Genomic RAG: Multimodal Metadata‑Driven PDF Retrieval
+# 🧬 Genomic RAG
 
-**Genomic RAG** is a **multimodal** Retrieval‑Augmented Generation (RAG) system that provides rich, metadata‑driven access to genomic classification information embedded within PDF documents. It supports **text**, **table**, and **image** queries, enabling **lightning‑fast retrieval** of relevant scientific insights. Future releases will introduce a specialized financial‑documents version with tailored pipelines. Future releases will introduce a specialized financial‑documents version with tailored pipelines.
+**Multimodal Metadata‑Driven PDF Retrieval**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)  [![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)](https://www.python.org/)  [![Demo Video](https://img.shields.io/badge/demo_video-▶️-blue)](assets/demo.mp4)
+
+**Genomic RAG** is a **multimodal** Retrieval‑Augmented Generation (RAG) system for **genomic classification** information in PDFs. It supports **text**, **table**, and **image** queries, delivering **lightning‑fast retrieval** via rich metadata indexing. Future releases will include a specialized financial‑documents module.
+
+---
+
+## 📋 Table of Contents
+
+1. [Quick Start](#-quick-start)
+2. [Running Locally](#-running-locally)
+3. [Demo Video & GIF](#-demo-video--gif)
+4. [Prerequisites](#-prerequisites)
+5. [Contributing & Roadmap](#-contributing--roadmap)
+6. [License](#-license)
 
 ---
 
 ## 🚀 Quick Start
 
-```bash
-# 1. Clone the repo
-git clone https://github.com/Luv-crypto/RAG_System.git
-cd RAG_System
+1. **Clone the repo**
 
-# 2. Create & activate venv
-python -m venv venv
-# macOS/Linux:
-source venv/bin/activate
-# Windows PowerShell:
-.\venv\Scripts\Activate.ps1
+   ```bash
+   git clone https://github.com/Luv-crypto/RAG_System.git
+   cd RAG_System
+   ```
+2. **Setup virtual environment**
 
-# 3. Install deps
-pip install --upgrade pip
-pip install -r requirements.txt
+   ```bash
+   python -m venv venv
+   # macOS/Linux:
+   source venv/bin/activate
+   # Windows PowerShell:
+   .\\venv\\Scripts\\Activate.ps1
+   ```
+3. **Install dependencies**
 
-# 4. Copy .env and set secrets
-cp .env.example .env
-# Edit .env: SECRET_KEY, OPENAI_API_KEY, etc.
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+4. **Configure environment variables**
 
-# 5. Run the app
-python main.py
-```
+   ```bash
+   cp .env.example .env
+   # Edit .env and set:
+   # SECRET_KEY, OPENAI_API_KEY, etc.
+   ```
+5. **Start the application**
 
-# 4. Copy .env and set secrets
-
-cp .env.example .env
-
-# Edit .env: SECRET\_KEY, OPENAI\_API\_KEY, etc.
-
-# 5. Run the app
-
-python main.py
-
-````
-
-> In `main.py`, the app is launched with:
-> ```python
-> if __name__ == "__main__":
->     app.run(host="127.0.0.1", port=5000, debug=True)
-> ```
+   ```bash
+   python main.py
+   ```
 
 ---
 
-## 📄 Demo Video
+## 🏃 Running Locally
 
-Check out the short demo:
+By default, `main.py` launches the Flask server on `127.0.0.1:5000`:
+
+```python
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5000, debug=True)
+```
+
+Open your browser at [http://localhost:5000](http://localhost:5000).
+
+---
+
+## 📄 Demo Video & GIF
+
+### Demo Video
 
 <video width="640" controls>
   <source src="assets/demo.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
 
-Or view the animated GIF:
+### Animated GIF
 
 ![App Demo](assets/demo.gif)
 
@@ -67,22 +87,20 @@ Or view the animated GIF:
 
 ## 📦 Prerequisites
 
-- Python 3.10+
-- Git
+* **Python** ≥ 3.10
+* **Git**
 
 ---
 
 ## 🤝 Contributing & Roadmap
 
-- 🚧 **Current**: Genomic classification & metadata retrieval pipelines.
-- 🏦 **Coming Soon**: Financial documents specialization module.
+* 🚧 **Current Focus**: Genomic metadata retrieval pipelines
+* 🏦 **Next Up**: Financial‑documents specialized module
 
-Feel free to open issues or submit pull requests for new features!
+Contributions welcome! Please open issues or submit pull requests.
 
 ---
 
 ## 📄 License
 
-MIT © Luv‑crypto
-
-````
+Distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
