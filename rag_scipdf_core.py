@@ -16,13 +16,15 @@ from threading import Event
 import chromadb
 import nest_asyncio
 import google.generativeai as genai
-
+from dotenv import load_dotenv
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
 
+load_dotenv()
+
 # ─────────────────── API keys & model names ────────────────────
-GEMINI_API_KEY = "AIzaSyD-zaE26w-qsu00AyXXjVI7HK7Uhl6-IVQ"      # ← Set your own Gemini API key here
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")      # ← Set your own Gemini API key here
 MODEL_GEN      = "models/gemini-1.5-flash-latest"
 MODEL_EMB      = "models/text-embedding-004"
 if not GEMINI_API_KEY:
@@ -684,6 +686,8 @@ def smart_query(
     Question: "{question}"
     """)
     answer = _gem_chat(full_prompt)
+    print(ctx)
+    print(answer)
 
     # ── 6) Inline render (Jupyter/VS Code) if Gemini emitted any media tokens ───
     #    We match either 8-hex chars OR full 36-char UUID (with hyphens).
