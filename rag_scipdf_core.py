@@ -26,7 +26,6 @@ from numpy.linalg import norm
 
 load_dotenv()
 
-load_dotenv()
 
 # ─────────────────── API keys & model names ────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")      # ← Set your own Gemini API key here
@@ -34,6 +33,7 @@ MODEL_GEN      = "models/gemini-1.5-flash-latest"
 MODEL_EMB      = "models/text-embedding-004"
 if not GEMINI_API_KEY:
     raise RuntimeError("Set GEMINI_API_KEY")
+
 
 nest_asyncio.apply()
 genai.configure(api_key=GEMINI_API_KEY)
