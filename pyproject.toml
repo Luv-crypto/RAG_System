@@ -9,17 +9,18 @@ description = "Flask-based RAG API"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
- ﻿Flask==3.1.1,
- google-generativeai==0.8.5,
- ipython==8.35.0,
- markdown2==2.5.3,
- nest-asyncio==1.6.0,
- numpy==1.26.4,
- python-dotenv==1.1.0,
- chromadb==0.4.24,
- docling==2.32.0,
- docling-core==2.30.1,
- docling-parse==4.0.1,
+  "Flask==3.1.1",
+  "google-generativeai==0.8.5",
+  "ipython==8.35.0",
+  "markdown2==2.5.3",
+  "nest-asyncio==1.6.0",
+  "numpy==1.26.4",
+  "python-dotenv==1.1.0",
+  "chromadb==0.4.24",
+  "docling==2.32.0",
+  "docling-core==2.30.1",
+  "docling-parse==4.0.1",
 ]
+
 [project.scripts]
 rag-service = "app:main"
