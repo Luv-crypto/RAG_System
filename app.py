@@ -372,7 +372,7 @@ app = Flask(__name__)
 def main():
     # mirror exactly how you run it today:
     app.run(
-        host="127.0.0.1",
+        host="34.29.229.245",
         port=5000,
         debug=True,
         use_reloader=False,
