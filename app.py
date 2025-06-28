@@ -14,6 +14,11 @@ from flask import (
 # ---------- your RAG core (imported) ---------------------------
 from rag_scipdf_core import smart_query   # <- must be importable!
 from dotenv import load_dotenv
+# app.py
+os.environ["ANONYMIZED_TELEMETRY"] = os.getenv("ANONYMIZED_TELEMETRY", "False")
+app = Flask(__name__)
+
+
 
 # Load .env into process environment
 load_dotenv()
@@ -359,27 +364,20 @@ def ingest_status(task_id):
     return jsonify({"status": task.get("status", "running")})
 
 
-
-
-
-
 # ───────── main ─────────
-from flask import Flask
-app = Flask(__name__)
-
-# … all your route definitions …
+@app.route("/health")
+def health():
+    return {"status": "ok"}
 
 def main():
-    # mirror exactly how you run it today:
-    app.run(
-        host="34.29.229.245",
-        port=5000,
-        debug=True,
-        use_reloader=False,
-    )
+    host = os.getenv("FLASK_RUN_HOST", "0.0.0.0")
+    port = int(os.getenv("FLASK_RUN_PORT", 5000))
+    debug = os.getenv("FLASK_DEBUG", "False").lower() in ("1","true","yes")
+    app.run(host=host, port=port, debug=debug, use_reloader=False)
 
 if __name__ == "__main__":
     main()
+
 
 
 

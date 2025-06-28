@@ -26,7 +26,6 @@ from numpy.linalg import norm
 
 load_dotenv()
 
-load_dotenv()
 
 # ─────────────────── API keys & model names ────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")      # ← Set your own Gemini API key here
