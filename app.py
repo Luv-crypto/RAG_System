@@ -364,9 +364,22 @@ def ingest_status(task_id):
 
 
 # ───────── main ─────────
+from flask import Flask
+app = Flask(__name__)
+
+# … all your route definitions …
+
+def main():
+    # mirror exactly how you run it today:
+    app.run(
+        host="127.0.0.1",
+        port=5000,
+        debug=True,
+        use_reloader=False,
+    )
+
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000,
-            debug=True,
-            use_reloader=False)   # ← add this
+    main()
+
 
 
