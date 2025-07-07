@@ -19,7 +19,6 @@ ENV ANONYMIZED_TELEMETRY=False \
     FLASK_DEBUG=False \
     PYTHONUNBUFFERED=1
 
-ENV API_KEY="{API_KEY}"
 
 # Copy deps from builder
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
