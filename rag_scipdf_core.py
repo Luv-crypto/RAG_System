@@ -688,8 +688,7 @@ def smart_query(
     Question: "{question}"
     """)
     answer = _gem_chat(full_prompt)
-    print(ctx)
-    print(answer)
+    
 
     # ── 6) Inline render (Jupyter/VS Code) if Gemini emitted any media tokens ───
     #    We match either 8-hex chars OR full 36-char UUID (with hyphens).
