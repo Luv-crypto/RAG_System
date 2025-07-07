@@ -10,15 +10,16 @@ RUN pip install --upgrade pip \
 # Stage 2: copy code and run
 FROM python:3.10-slim
 WORKDIR /app
-ARG API_KEY
+
 
 # Silence ChromaDB telemetry inside the container
 ENV ANONYMIZED_TELEMETRY=False \
     FLASK_RUN_HOST=0.0.0.0 \
     FLASK_RUN_PORT=5000 \
     FLASK_DEBUG=False \
-    API_KEY=${API_KEY} \
     PYTHONUNBUFFERED=1
+
+ENV API_KEY="{API_KEY}"
 
 # Copy deps from builder
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
