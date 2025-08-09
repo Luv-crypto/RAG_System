@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-web
+  namespace: prod
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: rag-web }
+  template:
+    metadata:
+      labels: { app: rag-web }
+    spec:
+      containers:
+      - name: rag-web
+        image: "__IMAGE__"          # substituted by Jenkins (Artifact Registry image:tag)
+        ports: [{ containerPort: 5000 }]
+        env:
+        - name: FLASK_RUN_HOST
+          value: "0.0.0.0"
+        - name: FLASK_RUN_PORT
+          value: "5000"
+        - name: FLASK_DEBUG
+          value: "False"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rag-secrets
+              key: GEMINI_API_KEY
+        readinessProbe:
+          httpGet: { path: __HEALTH_PATH__, port: 5000 }
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet: { path: __HEALTH_PATH__, port: 5000 }
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
