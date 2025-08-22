@@ -4,7 +4,8 @@ metadata:
   name: rag-web
   namespace: prod
 spec:
-  replicas: 2
+  replicas: 1
+  revisionHistoryLimit: 2
   strategy:
     type: RollingUpdate
     rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
@@ -16,7 +17,7 @@ spec:
     spec:
       containers:
       - name: rag-web
-        image: "__IMAGE__"          # substituted by Jenkins (Artifact Registry image:tag)
+        image: "__IMAGE__"                      # <- Jenkins fills this in
         ports: [{ containerPort: 5000 }]
         env:
         - name: FLASK_RUN_HOST
@@ -31,7 +32,7 @@ spec:
               name: rag-secrets
               key: GEMINI_API_KEY
         readinessProbe:
-          httpGet: { path: __HEALTH_PATH__, port: 5000 }
+          httpGet: { path: __HEALTH_PATH__, port: 5000 }   # <- Jenkins fills this in
           initialDelaySeconds: 5
           periodSeconds: 5
         livenessProbe:
@@ -40,11 +41,13 @@ spec:
           periodSeconds: 10
         resources:
           requests:
-            cpu: "500m"
-            memory: "8Gi"
+            cpu: "750m"
+            memory: "4Gi"
+            ephemeral-storage: "1Gi"
           limits:
-            cpu: "500m"
-            memory: "8Gi"
+            cpu: "750m"
+            memory: "4Gi"
+            ephemeral-storage: "1Gi"
         volumeMounts:
         - name: rag-data
           mountPath: /app/chroma_scipdfs
@@ -56,6 +59,3 @@ spec:
       - name: rag-data
         persistentVolumeClaim:
           claimName: rag-data-pvc
-
-
-
