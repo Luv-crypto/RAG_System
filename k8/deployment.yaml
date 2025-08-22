@@ -40,5 +40,22 @@ spec:
           periodSeconds: 10
         resources:
           requests:
-            cpu: "600m"
-            memory: "10Gi"
+            cpu: "500m"
+            memory: "8Gi"
+          limits:
+            cpu: "500m"
+            memory: "8Gi"
+        volumeMounts:
+        - name: rag-data
+          mountPath: /app/chroma_scipdfs
+          subPath: chroma_scipdfs
+        - name: rag-data
+          mountPath: /app/object_store
+          subPath: object_store
+      volumes:
+      - name: rag-data
+        persistentVolumeClaim:
+          claimName: rag-data-pvc
+
+
+
