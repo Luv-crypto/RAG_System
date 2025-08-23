@@ -8,36 +8,42 @@ spec:
   revisionHistoryLimit: 2
   strategy:
     type: RollingUpdate
-    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels: { app: rag-web }
   template:
     metadata:
       labels: { app: rag-web }
     spec:
+      # Prefer co-location so RWO PVC can be mounted by multiple pods on the SAME node
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels: { app: rag-web }
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: rag-web
-        image: "__IMAGE__"                      # <- Jenkins fills this in
+        image: "__IMAGE__"
         ports: [{ containerPort: 5000 }]
         env:
-        - name: FLASK_RUN_HOST
-          value: "0.0.0.0"
-        - name: FLASK_RUN_PORT
-          value: "5000"
-        - name: FLASK_DEBUG
-          value: "False"
+        - { name: FLASK_RUN_HOST, value: "0.0.0.0" }
+        - { name: FLASK_RUN_PORT, value: "5000" }
+        - { name: FLASK_DEBUG,    value: "False" }
         - name: GEMINI_API_KEY
           valueFrom:
-            secretKeyRef:
-              name: rag-secrets
-              key: GEMINI_API_KEY
+            secretKeyRef: { name: rag-secrets, key: GEMINI_API_KEY }
         readinessProbe:
-          httpGet: { path: __HEALTH_PATH__, port: 5000 }   # <- Jenkins fills this in
-          initialDelaySeconds: 5
+          httpGet: { path: __HEALTH_PATH__, port: 5000 }
+          initialDelaySeconds: 10
           periodSeconds: 5
         livenessProbe:
           httpGet: { path: __HEALTH_PATH__, port: 5000 }
-          initialDelaySeconds: 15
+          initialDelaySeconds: 20
           periodSeconds: 10
         resources:
           requests:
@@ -57,5 +63,4 @@ spec:
           subPath: object_store
       volumes:
       - name: rag-data
-        persistentVolumeClaim:
-          claimName: rag-data-pvc
+        persistentVolumeClaim: { claimName: rag-data-pvc }
